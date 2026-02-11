@@ -1,5 +1,5 @@
 from typing import Any, Callable, List, Optional, Tuple, cast
-from src.liouss_python_sql_connectors.sql_connection import SQLConnection
+from liouss_python_sql_connectors.sql_connection import SQLConnection
 import oracledb
 import datetime
 import os
