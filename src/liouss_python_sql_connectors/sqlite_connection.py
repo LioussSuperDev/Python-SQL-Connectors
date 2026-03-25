@@ -52,30 +52,30 @@ class SQLiteConnection(SQLConnection):
             self.logs.append(f"[{str(datetime.datetime.now())}]\n")
             self.logs.append(f"{query}; [{str(params)[:500]}]\n\n")
 
-        with self.get_db() as conn:
-            cur = conn.cursor()
-            try:
-                if params2:
-                    cur.execute(query, params2)
-                elif params:
-                    if len(params) == 1 and isinstance(params[0], (tuple, list, dict)):
-                        cur.execute(query, params[0])
-                    else:
-                        cur.execute(query, params)
-                else:
-                    cur.execute(query)
 
-                if include_col_name and cur.description:
-                    col_names = tuple(col[0] for col in cur.description)
-                    rows = cur.fetchall()
-                    return [col_names] + rows
+        cur = self.get_db().cursor()
+        try:
+            if params2:
+                cur.execute(query, params2)
+            elif params:
+                if len(params) == 1 and isinstance(params[0], (tuple, list, dict)):
+                    cur.execute(query, params[0])
                 else:
-                    return cur.fetchall()
+                    cur.execute(query, params)
+            else:
+                cur.execute(query)
 
-            except sqlite3.Error as e:
-                raise e
-            finally:
-                cur.close()
+            if include_col_name and cur.description:
+                col_names = tuple(col[0] for col in cur.description)
+                rows = cur.fetchall()
+                return [col_names] + rows
+            else:
+                return cur.fetchall()
+
+        except sqlite3.Error as e:
+            raise e
+        finally:
+            cur.close()
 
     def _query_many(
         self,
@@ -90,30 +90,29 @@ class SQLiteConnection(SQLConnection):
             self.logs.append(f"[{str(datetime.datetime.now())} MANY]\n")
             self.logs.append(f"{query}; [{str(params)[:500]}]\n\n")
 
-        with self.get_db() as conn:
-            cur = conn.cursor()
+        cur = self.get_db().cursor()
+        try:
+            if not params:
+                raise ValueError("executemany requires a sequence of parameter sets")
+
+            param_sets = params[0]
+
+            if batch_error_lambda is None:
+                cur.executemany(query, param_sets)
+            else:
+                for param_set in param_sets:
+                    try:
+                        cur.execute(query, param_set)
+                    except sqlite3.Error as e:
+                        batch_error_lambda(e)
+
             try:
-                if not params:
-                    raise ValueError("executemany requires a sequence of parameter sets")
+                return cur.fetchall()
+            except sqlite3.Error:
+                return []
 
-                param_sets = params[0]
-
-                if batch_error_lambda is None:
-                    cur.executemany(query, param_sets)
-                else:
-                    for param_set in param_sets:
-                        try:
-                            cur.execute(query, param_set)
-                        except sqlite3.Error as e:
-                            batch_error_lambda(e)
-
-                try:
-                    return cur.fetchall()
-                except sqlite3.Error:
-                    return []
-
-            finally:
-                cur.close()
+        finally:
+            cur.close()
 
     def close(self):
         if self.connection:
